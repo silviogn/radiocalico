@@ -10,20 +10,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Web server:** Node.js + Express (`"type": "module"` — ES modules throughout)
 - **Database:** PostgreSQL — used in both development and production
-- **Frontend:** Vanilla JS + HLS.js in a single `index.html`
+- **Frontend:** Vanilla JS + HLS.js (`public/js/`)
 
 ## Local Development
 
-Docker Compose at project root with three services:
+Three Docker Compose files: `docker-compose.yml` (shared base), `docker-compose.dev.yml` (dev overrides), `docker-compose.prod.yml` (prod overrides).
 
-| Service | Port |
-|---|---|
-| Express | 3000 |
-| PostgreSQL | 5432 |
-| pgAdmin | 5050 |
+| Service | Port | Dev | Prod |
+|---|---|---|---|
+| Express | 3000 | ✓ | ✓ |
+| PostgreSQL | 5432 | ✓ (exposed) | ✓ (internal only) |
+| pgAdmin | 5050 | ✓ | — |
 
 ```bash
-docker compose up --build
+# Development — watch mode, source volume mount, pgAdmin
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+# Production — no devDependencies, no pgAdmin, DB not exposed
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
 ```
 
 Run without Docker (requires a local Postgres instance with `DATABASE_URL` set):
@@ -33,16 +37,24 @@ npm run dev   # watch mode
 npm start     # production
 ```
 
-No linting, formatting, or test tooling is configured.
+```bash
+npm test            # run all tests
+npm run test:backend   # node:test (no DB needed)
+npm run test:frontend  # Vitest + jsdom
+```
 
 ## Architecture
 
 ```
 src/index.js          — Express server (single file, all routes)
+src/ratings.js        — processVote() business logic (used by route + tests)
 public/index.html     — HTML markup (served via SSR)
 public/style.css      — All styles
-public/js/app.js      — All client-side JavaScript
+public/js/app.js      — Client-side JavaScript (DOM wiring, HLS, metadata polling)
+public/js/utils.js    — Pure functions: makeSongId, esc, applyRating (imported by app.js + tests)
 db/init.sql           — Schema; auto-runs on first Postgres container start
+tests/ratings.test.js       — Backend tests (node:test, stub DB client)
+tests/public/utils.test.js  — Frontend tests (Vitest + jsdom)
 ```
 
 ### Backend (`src/index.js`)
@@ -70,9 +82,7 @@ No migration framework; schema changes require editing `init.sql` and rebuilding
 
 ### Frontend (`public/`)
 
-`public/index.html` is pure markup. On load, `public/js/app.js` reads `window.__INIT__` (injected by the server at SSR time) for the initial track, then polls `/api/metadata` every 15 seconds. Album art is fetched from the Cover Art Archive API. HLS streaming uses HLS.js with native fallback for Safari/iOS.
-
-The `songId` derivation logic is duplicated between `src/index.js` (`songId()`) and `public/js/app.js` (`makeSongId()`) — keep them in sync when changing the format.
+`public/index.html` is pure markup. On load, `public/js/app.js` (loaded as `type="module"`) imports pure utilities from `public/js/utils.js`, reads `window.__INIT__` (injected by the server at SSR time) for the initial track, then polls `/api/metadata` every 15 seconds. Album art is fetched from the Cover Art Archive API. HLS streaming uses HLS.js with native fallback for Safari/iOS.
 
 
 # Style Guide 

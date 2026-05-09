@@ -1,0 +1,15 @@
+services:
+  web:
+    build:
+      context: .
+      target: prod
+    container_name: radiocalico_web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/radiocalico
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped

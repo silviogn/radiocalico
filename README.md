@@ -22,13 +22,17 @@ A web-based lossless music radio player. Streams 24-bit / 48 kHz audio via HLS, 
 Requires Docker and Docker Compose.
 
 ```bash
-docker compose up --build
+# Development — watch mode, source volume mount, pgAdmin included
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+# Production — no devDependencies, DB not exposed externally, no pgAdmin
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
 ```
 
-| Service  | URL                         |
-|----------|-----------------------------|
-| App      | http://localhost:3000       |
-| pgAdmin  | http://localhost:5050       |
+| Service  | Dev | Prod | URL |
+|----------|-----|------|-----|
+| App      | ✓   | ✓    | http://localhost:3000 |
+| pgAdmin  | ✓   | —    | http://localhost:5050 |
 
 pgAdmin credentials: `admin@local.dev` / `admin`
 
@@ -37,16 +41,23 @@ To run without Docker, set `DATABASE_URL` and then:
 ```bash
 npm run dev   # watch mode
 npm start     # production
+npm test      # run all tests
 ```
 
 ## Project Structure
 
 ```
 src/index.js          — Express server (all API routes + SSR)
+src/ratings.js        — Vote processing logic
 public/index.html     — HTML markup
 public/style.css      — Styles
 public/js/app.js      — Client-side JavaScript
+public/js/utils.js    — Pure utility functions (makeSongId, esc, applyRating)
 db/init.sql           — Database schema (auto-applied on first container start)
+tests/                — Unit tests (node:test for backend, Vitest + jsdom for frontend)
+docker-compose.yml        — Shared base (DB service)
+docker-compose.dev.yml    — Dev overrides (watch mode, volume mount, pgAdmin)
+docker-compose.prod.yml   — Prod overrides (no devDeps, no pgAdmin, DB internal)
 ```
 
 ## API
