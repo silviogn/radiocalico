@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 import { randomUUID } from 'crypto';
+import { processVote } from './ratings.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -87,63 +88,10 @@ app.post('/api/ratings/:songId', async (req, res) => {
   const vid = visitorId(req, res);
   const sid = req.params.songId;
   const { vote } = req.body;
-  if (vote !== 'up' && vote !== 'down') {
-    return res.status(400).json({ error: 'vote must be "up" or "down"' });
-  }
 
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
-    // Ensure ratings row exists
-    await client.query(
-      `INSERT INTO ratings (song_id, thumbs_up, thumbs_down)
-         VALUES ($1, 0, 0) ON CONFLICT (song_id) DO NOTHING`,
-      [sid]
-    );
-
-    const existing = await client.query(
-      'SELECT vote FROM user_ratings WHERE visitor_id = $1 AND song_id = $2',
-      [vid, sid]
-    );
-
-    let myVote = null;
-
-    if (existing.rows.length === 0) {
-      // New vote
-      const col = vote === 'up' ? 'thumbs_up' : 'thumbs_down';
-      await client.query(`UPDATE ratings SET ${col} = ${col} + 1 WHERE song_id = $1`, [sid]);
-      await client.query(
-        'INSERT INTO user_ratings (visitor_id, song_id, vote) VALUES ($1, $2, $3)',
-        [vid, sid, vote]
-      );
-      myVote = vote;
-    } else if (existing.rows[0].vote === vote) {
-      // Same button — unvote
-      const col = vote === 'up' ? 'thumbs_up' : 'thumbs_down';
-      await client.query(`UPDATE ratings SET ${col} = GREATEST(0, ${col} - 1) WHERE song_id = $1`, [sid]);
-      await client.query(
-        'DELETE FROM user_ratings WHERE visitor_id = $1 AND song_id = $2',
-        [vid, sid]
-      );
-      myVote = null;
-    } else {
-      // Changed vote — swap counts
-      const addCol    = vote === 'up' ? 'thumbs_up'   : 'thumbs_down';
-      const removeCol = vote === 'up' ? 'thumbs_down' : 'thumbs_up';
-      await client.query(
-        `UPDATE ratings SET ${addCol} = ${addCol} + 1, ${removeCol} = GREATEST(0, ${removeCol} - 1) WHERE song_id = $1`,
-        [sid]
-      );
-      await client.query(
-        'UPDATE user_ratings SET vote = $1 WHERE visitor_id = $2 AND song_id = $3',
-        [vote, vid, sid]
-      );
-      myVote = vote;
-    }
-
-    await client.query('COMMIT');
-
+    const myVote = await processVote(client, { visitorId: vid, songId: sid, vote });
     const counts = await pool.query(
       'SELECT thumbs_up, thumbs_down FROM ratings WHERE song_id = $1', [sid]
     );
@@ -154,7 +102,7 @@ app.post('/api/ratings/:songId', async (req, res) => {
     });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    res.status(err.status ?? 500).json({ error: err.message });
   } finally {
     client.release();
   }
@@ -191,8 +139,8 @@ app.get('/', async (req, res) => {
   } catch (_) {}
 
   // Inject init data just before the main script
-  html = html.replace('<script src="/public/js/app.js">',
-    `<script>window.__INIT__ = ${initData};</script>\n  <script src="/public/js/app.js">`);
+  html = html.replace('<script type="module" src="/public/js/app.js">',
+    `<script>window.__INIT__ = ${initData};</script>\n  <script type="module" src="/public/js/app.js">`);
 
   res.setHeader('Content-Type', 'text/html');
   res.setHeader('Cache-Control', 'no-store');

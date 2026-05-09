@@ -1,3 +1,5 @@
+import { makeSongId, esc, applyRating } from "./utils.js";
+
 const STREAM   = "https://d3d4yli4hf5bmh.cloudfront.net/hls/live.m3u8";
 const METADATA = "/api/metadata";
 
@@ -60,28 +62,10 @@ function stopElapsed() {
   elapsedTimer = null;
 }
 
-function makeSongId(artist, title) {
-  return `${(artist || "").trim().toLowerCase()}::${(title || "").trim().toLowerCase()}`;
-}
-
-function esc(s) {
-  return String(s || "")
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-
-function applyRating({ thumbsUp, thumbsDown, myVote }) {
-  countUp.textContent   = thumbsUp;
-  countDown.textContent = thumbsDown;
-  btnUp.classList.toggle("voted-up",    myVote === "up");
-  btnDown.classList.toggle("voted-down", myVote === "down");
-  btnUp.disabled   = false;
-  btnDown.disabled = false;
-}
-
 async function fetchRatings(sid) {
   try {
     const r = await fetch(`/api/ratings/${encodeURIComponent(sid)}`);
-    if (r.ok) applyRating(await r.json());
+    if (r.ok) applyRating(await r.json(), { btnUp, btnDown, countUp, countDown });
   } catch (_) {}
 }
 
@@ -94,7 +78,7 @@ async function submitVote(vote) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vote }),
     });
-    applyRating(await r.json());
+    applyRating(await r.json(), { btnUp, btnDown, countUp, countDown });
   } catch (_) {
     btnUp.disabled = btnDown.disabled = false;
   }
