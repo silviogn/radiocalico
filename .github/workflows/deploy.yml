@@ -1,0 +1,35 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: prod
+          push: true
+          tags: ${{ secrets.ACR_LOGIN_SERVER }}/radiocalico:${{ github.sha }},${{ secrets.ACR_LOGIN_SERVER }}/radiocalico:latest
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          acrName: ${{ secrets.ACR_NAME }}
+          containerAppName: radiocalico
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/radiocalico:${{ github.sha }}
+          environmentVariables: NODE_ENV=production DATABASE_URL=secretref:database-url
